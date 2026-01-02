@@ -41,10 +41,8 @@ export function sortTasks(tasks: ReadonlyArray<DerivedTask>): DerivedTask[] {
       return b.priorityWeight - a.priorityWeight;
     }
 
-    // 3. Deterministic tie-breaker (createdAt)
-    const aTime = new Date(a.createdAt).getTime();
-    const bTime = new Date(b.createdAt).getTime();
-    return aTime - bTime;
+    // 3. FINAL tie-breaker: title (alphabetical, case-insensitive)
+    return a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
   });
 }
 
