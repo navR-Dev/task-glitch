@@ -22,6 +22,7 @@ interface UseTasksState {
   updateTask: (id: string, patch: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   undoDelete: () => void;
+  clearLastDeleted: () => void;
 }
 
 const INITIAL_METRICS: Metrics = {
@@ -39,7 +40,6 @@ export function useTasks(): UseTasksState {
   const [error, setError] = useState<string | null>(null);
   const [lastDeleted, setLastDeleted] = useState<Task | null>(null);
 
-  // Guard against duplicate fetches (StrictMode / future regressions)
   const fetchedRef = useRef(false);
 
   function normalizeTasks(input: any[]): Task[] {
@@ -69,28 +69,27 @@ export function useTasks(): UseTasksState {
     });
   }
 
-  // Initial load: public JSON -> fallback generated dummy
   useEffect(() => {
     let isMounted = true;
-  
+
     async function loadOnce() {
       if (fetchedRef.current) {
         if (isMounted) setLoading(false);
         return;
       }
-  
+
       fetchedRef.current = true;
-  
+
       try {
         const res = await fetch('/tasks.json');
         if (!res.ok) throw new Error(`Failed to load tasks.json (${res.status})`);
         const data = (await res.json()) as any[];
-        const normalized: Task[] = normalizeTasks(data);
-  
+        const normalized = normalizeTasks(data);
+
         let finalData =
           normalized.length > 0 ? normalized : generateSalesTasks(50);
-  
-        // Injected bug: append a few malformed rows without validation
+
+        // Injected malformed data (INTENTIONAL — for later bugs)
         if (Math.random() < 0.5) {
           finalData = [
             ...finalData,
@@ -112,7 +111,7 @@ export function useTasks(): UseTasksState {
             } as any,
           ];
         }
-  
+
         if (isMounted) setTasks(finalData);
       } catch (e: any) {
         if (isMounted) setError(e?.message ?? 'Failed to load tasks');
@@ -120,13 +119,13 @@ export function useTasks(): UseTasksState {
         if (isMounted) setLoading(false);
       }
     }
-  
+
     loadOnce();
-  
+
     return () => {
       isMounted = false;
     };
-  }, []);  
+  }, []);
 
   const derivedSorted = useMemo<DerivedTask[]>(() => {
     const withRoi = tasks.map(withDerived);
@@ -193,6 +192,10 @@ export function useTasks(): UseTasksState {
     setLastDeleted(null);
   }, [lastDeleted]);
 
+  const clearLastDeleted = useCallback(() => {
+    setLastDeleted(null);
+  }, []);
+
   return {
     tasks,
     loading,
@@ -204,5 +207,6 @@ export function useTasks(): UseTasksState {
     updateTask,
     deleteTask,
     undoDelete,
+    clearLastDeleted,
   };
 }
