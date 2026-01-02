@@ -42,8 +42,10 @@ export function useTasks(): UseTasksState {
 
   const fetchedRef = useRef(false);
 
+  // 🔧 Bug 5 fix: defensive normalization
   function normalizeTasks(input: any[]): Task[] {
     const now = Date.now();
+
     return (Array.isArray(input) ? input : []).map((t, idx) => {
       const created = t.createdAt
         ? new Date(t.createdAt)
@@ -56,13 +58,24 @@ export function useTasks(): UseTasksState {
           : undefined);
 
       return {
-        id: t.id,
-        title: t.title,
-        revenue: Number(t.revenue) ?? 0,
-        timeTaken: Number(t.timeTaken) > 0 ? Number(t.timeTaken) : 1,
-        priority: t.priority,
-        status: t.status,
-        notes: t.notes,
+        id: t.id ?? crypto.randomUUID(),
+        title: typeof t.title === 'string' && t.title.trim() ? t.title : 'Untitled Task',
+
+        // revenue must be finite, otherwise neutral
+        revenue:
+          typeof t.revenue === 'number' && Number.isFinite(t.revenue)
+            ? t.revenue
+            : 0,
+
+        // allow timeTaken = 0 (ROI will render as "—")
+        timeTaken:
+          typeof t.timeTaken === 'number' && Number.isFinite(t.timeTaken)
+            ? t.timeTaken
+            : 0,
+
+        priority: t.priority ?? 'Low',
+        status: t.status ?? 'Todo',
+        notes: typeof t.notes === 'string' ? t.notes : undefined,
         createdAt: created.toISOString(),
         completedAt: completed,
       } as Task;
@@ -89,7 +102,7 @@ export function useTasks(): UseTasksState {
         let finalData =
           normalized.length > 0 ? normalized : generateSalesTasks(50);
 
-        // Injected malformed data (INTENTIONAL — for later bugs)
+        // Injected malformed data (INTENTIONAL — preserved)
         if (Math.random() < 0.5) {
           finalData = [
             ...finalData,
@@ -155,10 +168,18 @@ export function useTasks(): UseTasksState {
   const addTask = useCallback((task: Omit<Task, 'id'> & { id?: string }) => {
     setTasks(prev => {
       const id = task.id ?? crypto.randomUUID();
-      const timeTaken = task.timeTaken <= 0 ? 1 : task.timeTaken;
       const createdAt = new Date().toISOString();
       const completedAt = task.status === 'Done' ? createdAt : undefined;
-      return [...prev, { ...task, id, timeTaken, createdAt, completedAt }];
+
+      return [
+        ...prev,
+        {
+          ...task,
+          id,
+          createdAt,
+          completedAt,
+        },
+      ];
     });
   }, []);
 
@@ -166,13 +187,13 @@ export function useTasks(): UseTasksState {
     setTasks(prev =>
       prev.map(t => {
         if (t.id !== id) return t;
+
         const merged = { ...t, ...patch } as Task;
+
         if (t.status !== 'Done' && merged.status === 'Done' && !merged.completedAt) {
           merged.completedAt = new Date().toISOString();
         }
-        if ((patch.timeTaken ?? t.timeTaken) <= 0) {
-          merged.timeTaken = 1;
-        }
+
         return merged;
       })
     );
