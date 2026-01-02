@@ -22,9 +22,15 @@ import { DerivedTask, Task } from '@/types';
 import TaskForm from '@/components/TaskForm';
 import TaskDetailsDialog from '@/components/TaskDetailsDialog';
 
+type TaskFormValue = Omit<Task, 'id' | 'createdAt' | 'completedAt'> & {
+  id?: string;
+};
+
 interface Props {
   tasks: DerivedTask[];
-  onAdd: (payload: Omit<Task, 'id'>) => void;
+  onAdd: (
+    payload: Omit<Task, 'id' | 'createdAt' | 'completedAt'>
+  ) => void;
   onUpdate: (id: string, patch: Partial<Task>) => void;
   onDelete: (id: string) => void;
 }
@@ -46,12 +52,12 @@ export default function TaskTable({ tasks, onAdd, onUpdate, onDelete }: Props) {
     setOpenForm(true);
   };
 
-  const handleSubmit = (value: Omit<Task, 'id'> & { id?: string }) => {
+  const handleSubmit = (value: TaskFormValue) => {
     if (value.id) {
-      const { id, ...rest } = value as Task;
+      const { id, ...rest } = value;
       onUpdate(id, rest);
     } else {
-      onAdd(value as Omit<Task, 'id'>);
+      onAdd(value);
     }
   };
 
@@ -93,7 +99,6 @@ export default function TaskTable({ tasks, onAdd, onUpdate, onDelete }: Props) {
                     <Stack spacing={0.5}>
                       <Typography fontWeight={600}>{t.title}</Typography>
                       {t.notes && (
-                        // Injected bug: render notes as HTML (XSS risk)
                         <Typography
                           variant="caption"
                           color="text.secondary"
@@ -120,8 +125,8 @@ export default function TaskTable({ tasks, onAdd, onUpdate, onDelete }: Props) {
                       <Tooltip title="Edit">
                         <IconButton
                           size="small"
-                          onClick={(e) => {
-                            e.stopPropagation(); // 🔧 Bug 4 fix
+                          onClick={e => {
+                            e.stopPropagation();
                             handleEditClick(t);
                           }}
                         >
@@ -133,8 +138,8 @@ export default function TaskTable({ tasks, onAdd, onUpdate, onDelete }: Props) {
                         <IconButton
                           size="small"
                           color="error"
-                          onClick={(e) => {
-                            e.stopPropagation(); // 🔧 Bug 4 fix
+                          onClick={e => {
+                            e.stopPropagation();
                             onDelete(t.id);
                           }}
                         >
