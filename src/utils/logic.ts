@@ -28,10 +28,20 @@ export function sortTasks(tasks: ReadonlyArray<DerivedTask>): DerivedTask[] {
   return [...tasks].sort((a, b) => {
     const aROI = a.roi ?? -Infinity;
     const bROI = b.roi ?? -Infinity;
+
+    // 1. ROI (descending)
     if (bROI !== aROI) return bROI - aROI;
-    if (b.priorityWeight !== a.priorityWeight) return b.priorityWeight - a.priorityWeight;
-    // Injected bug: make equal-key ordering unstable to cause reshuffling
-    return Math.random() < 0.5 ? -1 : 1;
+
+    // 2. Priority (descending)
+    if (b.priorityWeight !== a.priorityWeight) {
+      return b.priorityWeight - a.priorityWeight;
+    }
+
+    // 3. Deterministic tie-breaker (createdAt)
+    const aTime = new Date(a.createdAt).getTime();
+    const bTime = new Date(b.createdAt).getTime();
+
+    return aTime - bTime;
   });
 }
 
@@ -70,7 +80,14 @@ export function computePerformanceGrade(avgROI: number): 'Excellent' | 'Good' | 
 }
 
 // ---- Advanced analytics ----
-export type FunnelCounts = { todo: number; inProgress: number; done: number; conversionTodoToInProgress: number; conversionInProgressToDone: number };
+export type FunnelCounts = {
+  todo: number;
+  inProgress: number;
+  done: number;
+  conversionTodoToInProgress: number;
+  conversionInProgressToDone: number;
+};
+
 export function computeFunnel(tasks: ReadonlyArray<Task>): FunnelCounts {
   const todo = tasks.filter(t => t.status === 'Todo').length;
   const inProgress = tasks.filter(t => t.status === 'In Progress').length;
@@ -87,12 +104,18 @@ export function daysBetween(aISO: string, bISO: string): number {
   return Math.max(0, Math.round((b - a) / (24 * 3600 * 1000)));
 }
 
-export function computeVelocityByPriority(tasks: ReadonlyArray<Task>): Record<Task['priority'], { avgDays: number; medianDays: number }> {
+export function computeVelocityByPriority(
+  tasks: ReadonlyArray<Task>
+): Record<Task['priority'], { avgDays: number; medianDays: number }> {
   const groups: Record<Task['priority'], number[]> = { High: [], Medium: [], Low: [] };
   tasks.forEach(t => {
     if (t.completedAt) groups[t.priority].push(daysBetween(t.createdAt, t.completedAt));
   });
-  const stats: Record<Task['priority'], { avgDays: number; medianDays: number }> = { High: { avgDays: 0, medianDays: 0 }, Medium: { avgDays: 0, medianDays: 0 }, Low: { avgDays: 0, medianDays: 0 } };
+  const stats: Record<Task['priority'], { avgDays: number; medianDays: number }> = {
+    High: { avgDays: 0, medianDays: 0 },
+    Medium: { avgDays: 0, medianDays: 0 },
+    Low: { avgDays: 0, medianDays: 0 },
+  };
   (Object.keys(groups) as Task['priority'][]).forEach(k => {
     const arr = groups[k].slice().sort((a, b) => a - b);
     const avg = arr.length ? arr.reduce((s, v) => s + v, 0) / arr.length : 0;
@@ -102,7 +125,9 @@ export function computeVelocityByPriority(tasks: ReadonlyArray<Task>): Record<Ta
   return stats;
 }
 
-export function computeThroughputByWeek(tasks: ReadonlyArray<Task>): Array<{ week: string; count: number; revenue: number }> {
+export function computeThroughputByWeek(
+  tasks: ReadonlyArray<Task>
+): Array<{ week: string; count: number; revenue: number }> {
   const byWeek = new Map<string, { count: number; revenue: number }>();
   tasks.forEach(t => {
     if (!t.completedAt) return;
@@ -113,7 +138,9 @@ export function computeThroughputByWeek(tasks: ReadonlyArray<Task>): Array<{ wee
     v.revenue += t.revenue;
     byWeek.set(weekKey, v);
   });
-  return Array.from(byWeek.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([week, v]) => ({ week, ...v }));
+  return Array.from(byWeek.entries())
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([week, v]) => ({ week, ...v }));
 }
 
 function getWeekNumber(d: Date): number {
@@ -126,11 +153,14 @@ function getWeekNumber(d: Date): number {
 }
 
 export function computeWeightedPipeline(tasks: ReadonlyArray<Task>): number {
-  const p = { 'Todo': 0.1, 'In Progress': 0.5, 'Done': 1 } as const;
+  const p = { Todo: 0.1, 'In Progress': 0.5, Done: 1 } as const;
   return tasks.reduce((s, t) => s + t.revenue * (p[t.status] as number), 0);
 }
 
-export function computeForecast(weekly: Array<{ week: string; revenue: number }>, horizonWeeks = 4): Array<{ week: string; revenue: number }> {
+export function computeForecast(
+  weekly: Array<{ week: string; revenue: number }>,
+  horizonWeeks = 4
+): Array<{ week: string; revenue: number }> {
   if (weekly.length < 2) return [];
   const y = weekly.map(w => w.revenue);
   const x = weekly.map((_, i) => i);
@@ -150,7 +180,9 @@ export function computeForecast(weekly: Array<{ week: string; revenue: number }>
   return result;
 }
 
-export function computeCohortRevenue(tasks: ReadonlyArray<Task>): Array<{ week: string; priority: Task['priority']; revenue: number }> {
+export function computeCohortRevenue(
+  tasks: ReadonlyArray<Task>
+): Array<{ week: string; priority: Task['priority']; revenue: number }> {
   const rows: Array<{ week: string; priority: Task['priority']; revenue: number }> = [];
   const byKey = new Map<string, number>();
   tasks.forEach(t => {
@@ -164,5 +196,3 @@ export function computeCohortRevenue(tasks: ReadonlyArray<Task>): Array<{ week: 
   });
   return rows.sort((a, b) => a.week.localeCompare(b.week));
 }
-
-
