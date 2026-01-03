@@ -83,10 +83,14 @@ function AppContent() {
     });
   }, [derivedSorted, q, fStatus, fPriority]);
 
+  // ✅ FIXED TYPE HERE
   const handleAdd = useCallback(
-    (payload: Omit<Task, 'id'>) => {
+    (payload: Omit<Task, 'id' | 'createdAt' | 'completedAt'>) => {
       addTask(payload);
-      setActivity(prev => [createActivity('add', `Added: ${payload.title}`), ...prev].slice(0, 50));
+      setActivity(prev => [
+        createActivity('add', `Added: ${payload.title}`),
+        ...prev,
+      ].slice(0, 50));
     },
     [addTask, createActivity]
   );
@@ -94,7 +98,10 @@ function AppContent() {
   const handleUpdate = useCallback(
     (id: string, patch: Partial<Task>) => {
       updateTask(id, patch);
-      setActivity(prev => [createActivity('update', `Updated: ${Object.keys(patch).join(', ')}`), ...prev].slice(0, 50));
+      setActivity(prev => [
+        createActivity('update', `Updated: ${Object.keys(patch).join(', ')}`),
+        ...prev,
+      ].slice(0, 50));
     },
     [updateTask, createActivity]
   );
@@ -102,14 +109,20 @@ function AppContent() {
   const handleDelete = useCallback(
     (id: string) => {
       deleteTask(id);
-      setActivity(prev => [createActivity('delete', `Deleted task ${id}`), ...prev].slice(0, 50));
+      setActivity(prev => [
+        createActivity('delete', `Deleted task ${id}`),
+        ...prev,
+      ].slice(0, 50));
     },
     [deleteTask, createActivity]
   );
 
   const handleUndo = useCallback(() => {
     undoDelete();
-    setActivity(prev => [createActivity('undo', 'Undo delete'), ...prev].slice(0, 50));
+    setActivity(prev => [
+      createActivity('undo', 'Undo delete'),
+      ...prev,
+    ].slice(0, 50));
   }, [undoDelete, createActivity]);
 
   return (
@@ -162,7 +175,12 @@ function AppContent() {
 
           {!loading && !error && (
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-              <TextField placeholder="Search by title" value={q} onChange={e => setQ(e.target.value)} fullWidth />
+              <TextField
+                placeholder="Search by title"
+                value={q}
+                onChange={e => setQ(e.target.value)}
+                fullWidth
+              />
               <Select value={fStatus} onChange={e => setFStatus(e.target.value)} sx={{ minWidth: 180 }}>
                 <MenuItem value="All">All Statuses</MenuItem>
                 <MenuItem value="Todo">Todo</MenuItem>
@@ -179,7 +197,12 @@ function AppContent() {
           )}
 
           {!loading && !error && (
-            <TaskTable tasks={filtered} onAdd={handleAdd} onUpdate={handleUpdate} onDelete={handleDelete} />
+            <TaskTable
+              tasks={filtered}
+              onAdd={handleAdd}
+              onUpdate={handleUpdate}
+              onDelete={handleDelete}
+            />
           )}
 
           {!loading && !error && <ChartsDashboard tasks={filtered} />}

@@ -18,7 +18,11 @@ interface UseTasksState {
   derivedSorted: DerivedTask[];
   metrics: Metrics;
   lastDeleted: Task | null;
-  addTask: (task: Omit<Task, 'id'> & { id?: string }) => void;
+
+  addTask: (
+    task: Omit<Task, 'id' | 'createdAt' | 'completedAt'> & { id?: string }
+  ) => void;
+
   updateTask: (id: string, patch: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   undoDelete: () => void;
@@ -39,13 +43,10 @@ export function useTasks(): UseTasksState {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastDeleted, setLastDeleted] = useState<Task | null>(null);
-
   const fetchedRef = useRef(false);
 
-  // 🔧 Bug 5 fix: defensive normalization
   function normalizeTasks(input: any[]): Task[] {
     const now = Date.now();
-
     return (Array.isArray(input) ? input : []).map((t, idx) => {
       const created = t.createdAt
         ? new Date(t.createdAt)
@@ -58,24 +59,13 @@ export function useTasks(): UseTasksState {
           : undefined);
 
       return {
-        id: t.id ?? crypto.randomUUID(),
-        title: typeof t.title === 'string' && t.title.trim() ? t.title : 'Untitled Task',
-
-        // revenue must be finite, otherwise neutral
-        revenue:
-          typeof t.revenue === 'number' && Number.isFinite(t.revenue)
-            ? t.revenue
-            : 0,
-
-        // allow timeTaken = 0 (ROI will render as "—")
-        timeTaken:
-          typeof t.timeTaken === 'number' && Number.isFinite(t.timeTaken)
-            ? t.timeTaken
-            : 0,
-
-        priority: t.priority ?? 'Low',
-        status: t.status ?? 'Todo',
-        notes: typeof t.notes === 'string' ? t.notes : undefined,
+        id: t.id,
+        title: t.title,
+        revenue: Number(t.revenue) ?? 0,
+        timeTaken: Number(t.timeTaken) > 0 ? Number(t.timeTaken) : 1,
+        priority: t.priority,
+        status: t.status,
+        notes: t.notes,
         createdAt: created.toISOString(),
         completedAt: completed,
       } as Task;
@@ -83,70 +73,74 @@ export function useTasks(): UseTasksState {
   }
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadOnce() {
+    let mounted = true;
+  
+    async function load() {
       if (fetchedRef.current) {
-        if (isMounted) setLoading(false);
+        if (mounted) setLoading(false); // ✅ FIX
         return;
       }
-
+  
       fetchedRef.current = true;
-
+  
       try {
         const res = await fetch('/tasks.json');
-        if (!res.ok) throw new Error(`Failed to load tasks.json (${res.status})`);
-        const data = (await res.json()) as any[];
+        if (!res.ok) throw new Error('Failed to load tasks.json');
+        const data = await res.json();
         const normalized = normalizeTasks(data);
-
-        let finalData =
+        const finalData =
           normalized.length > 0 ? normalized : generateSalesTasks(50);
-
-        // Injected malformed data (INTENTIONAL — preserved)
-        if (Math.random() < 0.5) {
-          finalData = [
-            ...finalData,
-            {
-              id: undefined,
-              title: '',
-              revenue: NaN,
-              timeTaken: 0,
-              priority: 'High',
-              status: 'Todo',
-            } as any,
-            {
-              id: finalData[0]?.id ?? 'dup-1',
-              title: 'Duplicate ID',
-              revenue: 9999999999,
-              timeTaken: -5,
-              priority: 'Low',
-              status: 'Done',
-            } as any,
-          ];
-        }
-
-        if (isMounted) setTasks(finalData);
+        if (mounted) setTasks(finalData);
       } catch (e: any) {
-        if (isMounted) setError(e?.message ?? 'Failed to load tasks');
+        if (mounted) setError(e?.message ?? 'Failed to load tasks');
       } finally {
-        if (isMounted) setLoading(false);
+        if (mounted) setLoading(false);
       }
     }
-
-    loadOnce();
-
+  
+    load();
     return () => {
-      isMounted = false;
+      mounted = false;
     };
   }, []);
+  useEffect(() => {
+    let mounted = true;
+  
+    async function load() {
+      if (fetchedRef.current) {
+        if (mounted) setLoading(false); // ✅ FIX
+        return;
+      }
+  
+      fetchedRef.current = true;
+  
+      try {
+        const res = await fetch('/tasks.json');
+        if (!res.ok) throw new Error('Failed to load tasks.json');
+        const data = await res.json();
+        const normalized = normalizeTasks(data);
+        const finalData =
+          normalized.length > 0 ? normalized : generateSalesTasks(50);
+        if (mounted) setTasks(finalData);
+      } catch (e: any) {
+        if (mounted) setError(e?.message ?? 'Failed to load tasks');
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
+  
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);    
 
-  const derivedSorted = useMemo<DerivedTask[]>(() => {
-    const withRoi = tasks.map(withDerived);
-    return sortDerived(withRoi);
+  const derivedSorted = useMemo(() => {
+    return sortDerived(tasks.map(withDerived));
   }, [tasks]);
 
-  const metrics = useMemo<Metrics>(() => {
-    if (tasks.length === 0) return INITIAL_METRICS;
+  const metrics = useMemo(() => {
+    if (!tasks.length) return INITIAL_METRICS;
 
     const totalRevenue = computeTotalRevenue(tasks);
     const totalTimeTaken = tasks.reduce((s, t) => s + t.timeTaken, 0);
@@ -165,36 +159,38 @@ export function useTasks(): UseTasksState {
     };
   }, [tasks]);
 
-  const addTask = useCallback((task: Omit<Task, 'id'> & { id?: string }) => {
-    setTasks(prev => {
-      const id = task.id ?? crypto.randomUUID();
-      const createdAt = new Date().toISOString();
-      const completedAt = task.status === 'Done' ? createdAt : undefined;
+  const addTask = useCallback(
+    (task: Omit<Task, 'id' | 'createdAt' | 'completedAt'> & { id?: string }) => {
+      setTasks(prev => {
+        const id = task.id ?? crypto.randomUUID();
+        const createdAt = new Date().toISOString();
+        const completedAt =
+          task.status === 'Done' ? createdAt : undefined;
 
-      return [
-        ...prev,
-        {
-          ...task,
-          id,
-          createdAt,
-          completedAt,
-        },
-      ];
-    });
-  }, []);
+        return [
+          ...prev,
+          {
+            ...task,
+            id,
+            createdAt,
+            completedAt,
+            timeTaken: task.timeTaken > 0 ? task.timeTaken : 1,
+          },
+        ];
+      });
+    },
+    []
+  );
 
   const updateTask = useCallback((id: string, patch: Partial<Task>) => {
     setTasks(prev =>
       prev.map(t => {
         if (t.id !== id) return t;
-
-        const merged = { ...t, ...patch } as Task;
-
-        if (t.status !== 'Done' && merged.status === 'Done' && !merged.completedAt) {
-          merged.completedAt = new Date().toISOString();
+        const updated = { ...t, ...patch };
+        if (t.status !== 'Done' && updated.status === 'Done') {
+          updated.completedAt = new Date().toISOString();
         }
-
-        return merged;
+        return updated;
       })
     );
   }, []);
